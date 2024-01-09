@@ -5,11 +5,15 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 dotenv.config();
 const PORT = process.env.PORT || 5000;
+const fs = require('fs');
+const { createObjectCsvWriter } = require('csv-writer');
+
 
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('Header'));
 
 mongoose
   .connect(process.env.DB, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -33,6 +37,17 @@ const healthdata = new mongoose.Schema({
     Temperature: Number,
     ECG: String,
 });
+
+const convertToCSV = async (data) => {
+  const csvWriter = createCsvWriter({
+    path: 'output.csv',
+    header: Object.keys(data[0]).map(field => ({ id: field, title: field })),
+  });
+
+  await csvWriter.writeRecords(data);
+  console.log('CSV file has been written successfully');
+};
+
 
 const Healthdata = mongoose.model("Healthdata", healthdata);
 
@@ -58,6 +73,29 @@ app.get("/update", async (req, res) => {
   }
 });
 
+app.get('/download-csv', async (req, res) => {
+  const data = await Healthdata.find({}).exec();
+  console.log(data)
+  const csvData = convertToCSV(data);
+  const fileName = 'output.csv';
+
+  // Write CSV data to a file
+  fs.writeFileSync(fileName, csvData);
+
+  // Set headers for file download
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+
+  // Send the file to the client
+  res.sendFile(fileName, (err) => {
+    // Clean up: delete the file after sending
+    fs.unlinkSync(fileName);
+    if (err) {
+      console.error(err);
+      res.status(500).send('Internal Server Error');
+    }
+  });
+});
 
 app.get("/api/patient", async (req, res) => {
     try{
